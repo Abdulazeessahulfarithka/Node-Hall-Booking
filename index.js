@@ -1,56 +1,119 @@
 import express from "express";
-import { client } from "./db.js";
-const app = express();
-const data = [
-  {
-    id: "1",
-    numberofseats: 100,
-    amenties: ["Ac,", "chair"],
-    price: 5000,
-    ifbooked: "true",
-    customername: "Abdul",
-    date: "05-feb-2023",
-    roomid: 123,
-    roomName: "duplex",
-  },
-  {
-    id: "2",
-    numberofseats: 100,
-    amenties: ["Ac,", "chair"],
-    price: 5000,
-    ifbooked: "false",
-    customername: "Azees",
-    date: "05-feb-2022",
-    roomid: 123,
-    roomName: "custom",
-  },
-];
+import * as dotenv from "dotenv";
+import { MongoClient } from "mongodb";
 
-app.get("/hall/ticket", (req, res) => {
-  res.send(data);
-});
+dotenv.config();
+const app = express();
 app.use(express.json());
 
-app.post("/hall/ticket", (req, res) => {
-  const newhall = {
-    id: data.length + 1,
-    numberofseats: req.body.numberofseats,
-    amenties: req.body.amenties,
-    price: req.body.price,
-    customername: req.body.customername,
-    roomname: req.body.roomName,
-  };
-  console.log(req.body);
-  data.push(newhall);
-  res.send(data);
-});
-function getcompanydetails() {
-  return client.db("guvi").collection("company").find().toArray();
-}
-app.get("/cars/data", async (req, res) => {
-  const companydata = await getcompanydetails();
-  return res.status(200).json({ data: companydata });
-  res.send(companydata)
+const PORT = 5000;
+const MONGO_URL = process.env.MONGO_URL;
+
+const client = new MongoClient(MONGO_URL);
+await client.connect();
+console.log("mongodb is live");
+
+//App start
+
+app.get("/", function (req, res) {
+  res.send("Hello, world!");
 });
 
-app.listen(6000, () => console.log("server start"));
+app.listen(PORT, () => {
+  console.log("server working");
+});
+
+//create room
+
+app.post("/createcustomer", async (req, res) => {
+  let data = [req.body]; // wrap the object in an array
+  let result = await client
+    .db("hallbook")
+    .collection("customer")
+    .insertMany(data);
+  res.send("success");
+  console.log(result);
+});
+app.get("/customer", async (req, res) => {
+  const result = await client
+    .db("hallbook")
+    .collection("customer")
+    .find({})
+    .toArray();
+  res.send(result);
+});
+
+// Booking a Room With
+
+app.post("/bookroom", async (req, res) => {
+  let data = [req.body]; // wrap the object in an array
+  let result = await client
+    .db("hallbook")
+    .collection("bookroom")
+    .insertMany(data);
+  res.send("success");
+  console.log(result);
+});
+app.get("/room", async (req, res) => {
+  const result = await client
+    .db("hallbook")
+    .collection("room")
+    .find({})
+    .toArray();
+  res.send(result);
+});
+
+//list all room with booked data with
+
+app.get("/roomdata", async (req, res) => {
+  let roomdata = req.body;
+  const result = await client
+    .db("hallbook")
+    .collection("rooms")
+    .aggregate([
+      {
+        $lookup: {
+          from: "customer",
+          localField: "room_id",
+          foreignField: "customer_id",
+          as: "Booking_Details",
+          pipeline: [
+            {
+              $project: {
+                customer_name: 1,
+                date: 1,
+                start: 1,
+                end: 1,
+                status: 1,
+              },
+            },
+          ],
+        },
+      },
+    ])
+    .toArray();
+  result.length > 0
+    ? res.send(result)
+    : res.status(401).send({ message: "No data Found" });
+});
+
+//List Customer Data
+app.get("/customerdata", async (req, res) => {
+  let roomdata = req.body;
+  const result = await client
+    .db("hallbook")
+    .collection("customerdata")
+    .aggregate([
+      {
+        $lookup: {
+          from: "rooms",
+          as: "Room_Name",
+          pipeline: [{ $project: { roomName: 1 } }],
+        },
+      },
+    ])
+    .toArray();
+  result.length > 0
+    ? res.send(result)
+    : res.status(401).send({ message: "No data Found" });
+});
